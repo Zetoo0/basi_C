@@ -1,0 +1,6 @@
+﻿  basi_c_compiler.cpp
+C:\Users\zeten\source\repos\basi_c_compiler\basi_c_compiler\basi_c_compiler.cpp(46,24): warning C4101: 't': unreferenced local variable
+C:\Users\zeten\source\repos\basi_c_compiler\basi_c_compiler\basi_c_compiler.cpp(124,20): warning C4267: '+=': conversion from 'size_t' to 'int', possible loss of data
+  basi_c_compiler.vcxproj -> C:\Users\zeten\source\repos\basi_c_compiler\x64\Debug\basi_c_compiler.exe
+  'pwsh.exe' is not recognized as an internal or external command,
+  operable program or batch file.
