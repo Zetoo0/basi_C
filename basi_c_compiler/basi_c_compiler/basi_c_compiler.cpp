@@ -2,7 +2,40 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <map>
 
+
+struct Symbol {
+    char symbol;
+    const char* type;
+};
+
+struct Computing {
+    const char* type;
+    Symbol child1;
+    Symbol child2;
+};
+
+struct Assigning {
+    const char* type;
+    Symbol child1;
+    Symbol child2;
+};
+
+struct Symreferencing {
+    char id;
+    const char* type;
+};
+
+struct IntConsisting {
+    const char* type;
+    char id;
+};
+
+struct FloatConsisting {
+    const char* type;
+    char id;
+};
 
 typedef enum Token {
     FLOATDCL,
@@ -24,6 +57,8 @@ struct Tokenazizer {
     int index;
 };
 
+
+
 struct Tokenazizer scandigit(const char* numstream, int index);
 struct Tokenazizer scanner(const char** stream);
 struct ASTNode* parseStatement();
@@ -38,11 +73,28 @@ struct Tokenazizer peekNextToken();
 void printAST(ASTNode* node, int level);
 void freeAST(ASTNode* node);
 
+void visit(Symbol sym);
+void enterSymbol(char name, const char* type);
+const char* lookupSymbol(char name);
+const char* consistent(Symbol c1, Symbol c2);
+const char* generalize(const char* t1, const char* t2);
+void convert(Symbol sym, const char* type);
+
+void visit(Computing n);
+void visit(Assigning n);
+void visit(Symreferencing n);
+void visit(IntConsisting n);
+void visit(FloatConsisting n);
+
+void generate(ASTNode* node);
+
 int currTokenIndex;
 int tokenCount;
 struct Tokenazizer* tokens;
+std::map<char, const char*> symTable;
+
 int main() {
-    const char* bla = "f b ;";  // Example input
+    const char* bla = "i g = 1 + 1; f b = g - 2 ;";  // Example input
     struct Tokenazizer t;
     const char* ptr = bla;
 
@@ -67,6 +119,9 @@ int main() {
     ASTNode* program = parseProgram();
     printf("\n");
     printAST(program, 0);
+
+    generate(program);
+
     freeAST(program);
     for (int j = 0; j < tokenCount; j++) {
         free(tokens[j].value);
@@ -200,6 +255,7 @@ typedef struct ASTNode {
     char* value;
     ASTNode* left;
     ASTNode* right;
+    ASTNode* next;
 }ASTNode;
 
 
@@ -210,6 +266,7 @@ ASTNode* createnode(NodeType type, char* value, Token token) {
     node->type = type;
     node->left = NULL;
     node->right = NULL;
+    node->next = NULL;
     return node;
 }
 
@@ -264,6 +321,7 @@ struct ASTNode* parseDeclaration() {
         return NULL;
     }
     ASTNode* id_node = createnode(NODE_ID, id.value, id.type);
+    printf("Declaration node type: %d\n", declaration.type);
     ASTNode* decl_node = createnode(NODE_DECL, declaration.value, declaration.type);
     decl_node->left = id_node;
     return decl_node;
@@ -295,9 +353,21 @@ struct ASTNode* parseStatement() {
 }
 
 struct ASTNode* parseProgram() {
-    ASTNode* node = createnode(NODE_PROGRAM, NULL, BLANK);
-    node->left = parseStatement();
-    return node;
+    ASTNode* head = createnode(NODE_PROGRAM, NULL, BLANK);
+    ASTNode* curr = head;
+    while (currTokenIndex < tokenCount) {
+        ASTNode* stmt = parseStatement();
+        if (stmt != NULL) {
+            curr->next = stmt;
+            curr = stmt;
+        }
+        Tokenazizer token = peekNextToken();
+        if (token.type == END) {
+            getNextToken();
+        }
+    }
+    head->left = parseStatement();
+    return head->next;
 }
 
 void freeAST(ASTNode* node) {
@@ -309,17 +379,114 @@ void freeAST(ASTNode* node) {
 }
 
 void printAST(ASTNode* node, int level) {
-    if (node == NULL) return;
-    printAST(node->right, level + 1);
-    for (int i = 0; i < level; i++)printf(" ");
-    if (node->value != NULL) {
-        printf("%s\n", node->value);
+    while (node != NULL) {
+        for (int i = 0; i < level; i++) printf("  ");
+        if (node->value != NULL) {
+            printf("%s\n", node->value);
+        }
+        else {
+            printf("%d\n", node->type);
+        }
+        printAST(node->left, level + 1);
+        printAST(node->right, level + 1);
+        node = node->next;
     }
-    else {
-        printf("%d\n", node->type);
-    }
-    printAST(node->left, level + 1);
 }
 
 //              SEMANTIC ANALYSIS
 
+void visit(Symbol sym) {
+    if (sym.type == "floatdcl") enterSymbol(sym.symbol, "float");
+    else enterSymbol(sym.symbol, "integer");
+}
+
+void enterSymbol(char name, const char* type) {
+    if (symTable[name] == NULL) symTable[name] = type;
+    else printf("duplicate declaration");
+}
+
+const char* lookupSymbol(char name) {
+    return(symTable[name]);
+}
+
+//visit methods
+
+
+void visit(Computing n) {
+    n.type = consistent(n.child1, n.child2);
+}
+
+void visit(Assigning n) {
+    convert(n.child2, n.child1.type);
+}
+
+void visit(Symreferencing n) {
+    n.type = lookupSymbol(n.id);
+}
+
+void visit(IntConsisting n) {
+    n.type = "integer";
+}
+
+void visit(FloatConsisting n) {
+    n.type = "float";
+}
+
+const char* consistent(Symbol c1, Symbol c2) {
+    const char* m = generalize(c1.type, c2.type);
+    convert(c1, m);
+    convert(c2, m);
+    return m;
+}
+
+const char* generalize(const char* t1, const char* t2) {
+    const char* ans;
+    if (t1 == "float" || t2 == "float") ans = "float";
+    else ans = "integer";
+    return ans;
+}
+
+void convert(Symbol sym, const char* type) {
+    if (sym.type == "float" && type == "integer") printf("Illegal type conversion");
+    else {
+        if (sym.type == "integer" && type == "float") {
+            symTable[sym.symbol] = "float";
+        }
+    }
+}
+
+//                  CODE GENERATION
+
+void generate(ASTNode* node) {
+    while (node != NULL) {
+        switch (node->type) {
+        case NODE_PROGRAM:
+            generate(node->left);
+            break;
+        case NODE_DECL:
+            printf("DECL %s\n", node->left->value);
+            enterSymbol(node->left->value[0], node->token == FLOATDCL ? "float" : "integer");
+            break;
+        case NODE_ASSIGN:
+            generate(node->right);
+            printf("STORE %s\n", node->left->value);
+            break;
+        case NODE_OPERATOR:
+            generate(node->left);
+            generate(node->right);
+            printf("%s\n", node->value);
+            break;
+        case NODE_NUMBER:
+            if (node->token == ID) {
+                printf("LOAD %s\n", node->value);
+            }
+            else {
+                printf("PUSH %s\n", node->value);
+            }
+            break;
+        default:
+            break;
+        }
+        node = node->next;
+    }
+}
